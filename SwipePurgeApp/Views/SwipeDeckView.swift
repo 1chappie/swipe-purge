@@ -236,12 +236,24 @@ struct SwipeDeckView: View {
             .padding(12)
 
             if isVideo == true {
-                Image(systemName: "play.circle.fill")
-                    .font(.system(size: 56, weight: .bold))
-                    .foregroundStyle(.white)
-                    .shadow(color: Color.black.opacity(0.35), radius: 6, x: 0, y: 3)
-                    .frame(width: cardSize.width, height: cardSize.height, alignment: .center)
-                    .allowsHitTesting(false)
+                VStack(spacing: 8) {
+                    Image(systemName: "play.circle.fill")
+                        .font(.system(size: 56, weight: .bold))
+                        .foregroundStyle(.white)
+                        .shadow(color: Color.black.opacity(0.35), radius: 6, x: 0, y: 3)
+
+                    if let metadata {
+                        Text(durationString(metadata.duration))
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Color.black.opacity(0.6))
+                            .foregroundStyle(.white)
+                            .clipShape(Capsule())
+                    }
+                }
+                .frame(width: cardSize.width, height: cardSize.height, alignment: .center)
+                .allowsHitTesting(false)
             }
 
             if viewModel.deletionSet.contains(assetId) {
@@ -303,9 +315,11 @@ struct SwipeDeckView: View {
                 if let metadata {
                     Text(dateString(metadata.creationDate))
                         .font(.title3.weight(.semibold))
+                        .foregroundStyle(.primary)
                 } else {
                     Text("—")
                         .font(.title3.weight(.semibold))
+                        .foregroundStyle(.primary)
                 }
                 Spacer()
                 Button {
@@ -313,21 +327,21 @@ struct SwipeDeckView: View {
                 } label: {
                     Image(systemName: viewModel.metadataService.isFavorite(assetId: assetId) ? "heart.fill" : "heart")
                         .font(.title2.weight(.semibold))
-                        .foregroundStyle(viewModel.metadataService.isFavorite(assetId: assetId) ? .red : .secondary)
+                        .foregroundStyle(.primary)
                 }
                 Button {
                     handleShare(assetId: assetId)
                 } label: {
                     Image(systemName: "square.and.arrow.up")
                         .font(.title2.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.primary)
                 }
                 Button {
                     showCredits = true
                 } label: {
                     Image(systemName: "questionmark.circle")
                         .font(.title2.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.primary)
                 }
                 .padding(.trailing, 14)
             }
