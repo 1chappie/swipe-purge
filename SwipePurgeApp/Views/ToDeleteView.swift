@@ -8,55 +8,120 @@ struct ToDeleteView: View {
 
     @State private var isCommitting = false
     @State private var errorMessage: String?
+    @State private var latestFirst = true
+    @State private var inspectedAssetId: String?
 
     var body: some View {
-        NavigationView {
-            VStack(spacing: 0) {
-                ScrollView {
-                    LazyVStack(spacing: 12) {
-                        ForEach(orderedDeletionIds, id: \.self) { id in
-                            deletionRow(assetId: id)
+        ZStack(alignment: .top) {
+            NavigationView {
+                VStack(spacing: 0) {
+                    ScrollView {
+                        LazyVStack(spacing: 12) {
+                            ForEach(orderedDeletionIds, id: \.self) { id in
+                                deletionRow(assetId: id)
+                            }
                         }
+                        .padding(.horizontal, 12)
+                        .padding(.top, 12)
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.top, 12)
+
+                    Divider()
+
+                    commitButton
                 }
-
-                Divider()
-
-                Button {
-                    Task { await commit() }
-                } label: {
-                    HStack {
-                        if isCommitting { ProgressView() }
-                        Text("Commit Deletion")
-                            .font(.headline)
+                .navigationTitle("To Delete")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Close") { dismiss() }
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(viewModel.deletionSet.isEmpty ? Color.gray.opacity(0.3) : Color.red)
-                    .foregroundStyle(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .padding()
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            latestFirst.toggle()
+                        } label: {
+                            Image(systemName: latestFirst ? "arrow.up" : "arrow.down")
+                                .font(.headline.weight(.semibold))
+                        }
+                        .accessibilityLabel(latestFirst ? "Latest first" : "Oldest first")
+                    }
                 }
-                .disabled(viewModel.deletionSet.isEmpty || isCommitting)
-            }
-            .navigationTitle("To Delete")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
+                .alert("Error", isPresented: Binding(get: { errorMessage != nil }, set: { _ in errorMessage = nil })) {
+                    Button("OK", role: .cancel) { errorMessage = nil }
+                } message: {
+                    Text(errorMessage ?? "")
                 }
             }
-            .alert("Error", isPresented: Binding(get: { errorMessage != nil }, set: { _ in errorMessage = nil })) {
-                Button("OK", role: .cancel) { errorMessage = nil }
-            } message: {
-                Text(errorMessage ?? "")
+            .blur(radius: isCommitting ? 8 : 0)
+            .disabled(isCommitting)
+
+            dragHandle
+                .padding(.top, 8)
+                .allowsHitTesting(false)
+
+            if isCommitting {
+                ZStack {
+                    Color.black.opacity(0.12)
+                        .ignoresSafeArea()
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .controlSize(.large)
+                        .tint(.white)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .fullScreenCover(isPresented: Binding(get: { inspectedAssetId != nil }, set: { if !$0 { inspectedAssetId = nil } })) {
+            if let assetId = inspectedAssetId {
+                InspectorView(assetId: assetId,
+                              metadataService: viewModel.metadataService,
+                              gifService: viewModel.gifService,
+                              onDismiss: {
+                                  self.inspectedAssetId = nil
+                              })
+                    .ignoresSafeArea()
             }
         }
     }
 
+    private var dragHandle: some View {
+        Capsule()
+            .fill(Color.secondary.opacity(0.35))
+            .frame(width: 44, height: 5)
+    }
+
     private var orderedDeletionIds: [String] {
-        viewModel.assetIds.filter { viewModel.deletionSet.contains($0) }
+        let ids = viewModel.deletionQueue.map(\.assetId)
+        return latestFirst ? Array(ids.reversed()) : ids
+    }
+
+    private var commitButton: some View {
+        Button {
+            Task { await commit() }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "trash.fill")
+                Text("Commit Deletion")
+                    .font(.headline.weight(.semibold))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background {
+                ZStack {
+                    Capsule()
+                        .fill(.ultraThinMaterial)
+                    Capsule()
+                        .fill(viewModel.deletionSet.isEmpty ? Color.white.opacity(0.06) : Color.red.opacity(0.18))
+                }
+            }
+            .overlay {
+                Capsule()
+                    .stroke(Color.white.opacity(viewModel.deletionSet.isEmpty ? 0.08 : 0.18), lineWidth: 1)
+            }
+            .foregroundStyle(viewModel.deletionSet.isEmpty ? Color.secondary : .white)
+            .shadow(color: viewModel.deletionSet.isEmpty ? .clear : Color.red.opacity(0.18), radius: 12, x: 0, y: 6)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+        }
+        .disabled(viewModel.deletionSet.isEmpty || isCommitting)
     }
 
     private func commit() async {
@@ -90,6 +155,12 @@ struct ToDeleteView: View {
                         .font(.system(size: 18, weight: .bold))
                         .foregroundStyle(.white)
                         .shadow(color: Color.black.opacity(0.3), radius: 2, x: 0, y: 1)
+                }
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 8))
+            .onTapGesture {
+                withAnimation(.easeInOut(duration: 0.22)) {
+                    inspectedAssetId = assetId
                 }
             }
 

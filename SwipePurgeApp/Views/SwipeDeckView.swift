@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 import Photos
 import SwiftData
@@ -20,6 +21,7 @@ struct SwipeDeckView: View {
     @State private var infoToast: InfoToast?
     @State private var infoToastTask: Task<Void, Never>?
     @State private var copyPulseLabel: String?
+    @State private var showCounterAsPercent = false
     @State private var sharePayload: SharePayload?
     @State private var showCredits = false
     @State private var sheetLift: CGFloat = 0
@@ -53,8 +55,6 @@ struct SwipeDeckView: View {
                                 VStack(spacing: 8) {
                                     if let assetId = viewModel.currentAssetId {
                                         cardArea(assetId: assetId, height: maxCardHeight)
-                                        actionIconRow
-                                            .padding(.horizontal, 24)
                                     } else {
                                         emptyState
                                             .padding(.horizontal, 16)
@@ -62,6 +62,10 @@ struct SwipeDeckView: View {
                                 }
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                                 .blur(radius: sheetProgress > 0.05 ? 3 : 0)
+
+                                if sheetLift > 1 {
+                                    sheetDismissLayer
+                                }
 
                                 if let assetId = viewModel.currentAssetId {
                                     metadataSheet(assetId: assetId, availableHeight: geo.size.height)
@@ -73,11 +77,19 @@ struct SwipeDeckView: View {
                 .padding(.top, 8)
             }
 
+            if sheetLift > 1 && !showInspector {
+                sheetDismissTopOverlay
+            }
+
             if showInspector, let assetId = viewModel.currentAssetId {
                 InspectorView(assetId: assetId,
                               metadataService: viewModel.metadataService,
                               gifService: viewModel.gifService,
-                              onDismiss: { showInspector = false })
+                              onDismiss: {
+                                  withAnimation(.easeInOut(duration: 0.22)) {
+                                      showInspector = false
+                                  }
+                              })
                     .ignoresSafeArea()
                     .transition(.opacity)
                     .zIndex(10)
@@ -128,56 +140,73 @@ struct SwipeDeckView: View {
     }
 
     private var topBar: some View {
-        HStack {
-            Button("All Photos") {
-                showAllPhotos = true
-            }
-            .buttonStyle(.bordered)
-            .buttonBorderShape(.capsule)
-            .controlSize(.large)
+        let deleteCount = viewModel.deletionSet.count
+        let deleteLabel = deleteCount > 999 ? "To Del." : "To Delete"
 
-            Spacer()
-
-            counterView
-
-            Spacer()
-
-            Button {
-                showToDelete = true
-            } label: {
-                HStack(spacing: 6) {
-                    Text("To Delete")
-                    if viewModel.deletionSet.count > 0 {
-                        Text("\(viewModel.deletionSet.count)")
-                            .font(.caption.weight(.bold))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.red.opacity(0.85))
-                            .foregroundStyle(.white)
-                            .clipShape(Capsule())
+        return ZStack {
+            HStack {
+                Button {
+                    showAllPhotos = true
+                } label: {
+                    glassCapsule {
+                        Text("All Photos")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
                     }
                 }
+                .buttonStyle(.plain)
+
+                Spacer()
+
+                Button {
+                    showToDelete = true
+                } label: {
+                    glassCapsule {
+                        HStack(spacing: 6) {
+                            Text(deleteLabel)
+                            if deleteCount > 0 {
+                                Text("\(deleteCount)")
+                                    .font(.caption.weight(.bold))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.red.opacity(0.85))
+                                    .foregroundStyle(.white)
+                                    .clipShape(Capsule())
+                            }
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    }
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.bordered)
-            .buttonBorderShape(.capsule)
-            .controlSize(.large)
+
+            counterView
         }
+        .frame(maxWidth: .infinity)
         .padding(.horizontal, 16)
     }
 
     private var limitedAccessBanner: some View {
-        HStack {
-            Text("Limited Photo Access")
-                .font(.subheadline.weight(.semibold))
-            Spacer()
-            Button("Manage") {
-                showLimitedPicker = true
+        glassRoundedPanel(cornerRadius: 16, tint: Color.yellow.opacity(0.08)) {
+            HStack {
+                Text("Limited Photo Access")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Spacer()
+                Button {
+                    showLimitedPicker = true
+                } label: {
+                    glassCapsule(paddingH: 12, paddingV: 8, tint: Color.yellow.opacity(0.08)) {
+                        Text("Manage")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                    }
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.bordered)
+            .padding(12)
         }
-        .padding(10)
-        .background(Color.yellow.opacity(0.2))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
         .padding(.horizontal, 16)
     }
 
@@ -236,37 +265,36 @@ struct SwipeDeckView: View {
             .padding(12)
 
             if isVideo == true {
-                VStack(spacing: 8) {
-                    Image(systemName: "play.circle.fill")
-                        .font(.system(size: 56, weight: .bold))
+                glassCircleControl(size: 72, tint: Color.white.opacity(0.12)) {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 30, weight: .bold))
                         .foregroundStyle(.white)
-                        .shadow(color: Color.black.opacity(0.35), radius: 6, x: 0, y: 3)
-
-                    if let metadata {
-                        Text(durationString(metadata.duration))
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(Color.black.opacity(0.6))
-                            .foregroundStyle(.white)
-                            .clipShape(Capsule())
-                    }
                 }
                 .frame(width: cardSize.width, height: cardSize.height, alignment: .center)
                 .allowsHitTesting(false)
             }
 
-            if viewModel.deletionSet.contains(assetId) {
-                Image(systemName: "trash.fill")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
-                    .background(Color.red)
-                    .clipShape(Circle())
-                    .padding(12)
-                    .allowsHitTesting(false)
-                    .frame(width: cardSize.width, height: cardSize.height, alignment: .topTrailing)
+            VStack(alignment: .trailing, spacing: 8) {
+                if let metadata, isVideo {
+                    glassCapsule(paddingH: 10, paddingV: 4, tint: Color.white.opacity(0.08)) {
+                        Text(durationString(metadata.duration))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white)
+                    }
+                }
+
+                if viewModel.deletionSet.contains(assetId) {
+                    Image(systemName: "trash.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 36, height: 36)
+                        .background(Color.red)
+                        .clipShape(Circle())
+                }
             }
+            .padding(12)
+            .allowsHitTesting(false)
+            .frame(width: cardSize.width, height: cardSize.height, alignment: .topTrailing)
         }
         .id(assetId)
         .transition(.opacity.combined(with: .scale))
@@ -280,11 +308,13 @@ struct SwipeDeckView: View {
             ZStack {
                 Color.clear
                 cardView(assetId: assetId, cardSize: cardSize)
+                    .allowsHitTesting(sheetLift <= 1)
+                swipeEdgeHints(for: dragOffset.width)
             }
         }
         .frame(height: height)
         .frame(maxWidth: .infinity)
-        .overlay(alignment: .top) {
+        .overlay(alignment: .bottom) {
             toastStack
         }
         .animation(.spring(response: 0.24, dampingFraction: 0.85), value: viewModel.currentAssetId)
@@ -296,7 +326,7 @@ struct SwipeDeckView: View {
         let collapsedHeight: CGFloat = collapsedSheetHeight
         let expandedHeight = min(availableHeight * 0.58, 380)
         let maxLift = max(0, expandedHeight - collapsedHeight)
-        let limitedLift = maxLift * 0.5
+        let limitedLift = maxLift * 0.76
         let currentLift = min(max(sheetLift, 0), limitedLift)
         let yOffset = maxLift - currentLift
         let progress = limitedLift == 0 ? 1 : currentLift / limitedLift
@@ -305,49 +335,43 @@ struct SwipeDeckView: View {
             print("[MetadataSheet] maxLift=\(maxLift) limitedLift=\(limitedLift) currentLift=\(currentLift) yOffset=\(yOffset)")
         }
 
-        return VStack(spacing: 10) {
+        return VStack(spacing: 4) {
             Capsule()
                 .fill(Color.secondary.opacity(0.4))
                 .frame(width: 44, height: 5)
                 .padding(.top, 8)
 
-            HStack(spacing: 18) {
-                if let metadata {
-                    Text(dateString(metadata.creationDate))
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(.primary)
-                } else {
-                    Text("—")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(.primary)
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 1) {
+                    if let metadata {
+                        Text(dateString(metadata.creationDate))
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(.primary)
+                    } else {
+                        Text("—")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(.primary)
+                    }
+
+                    LocationRow(assetId: assetId,
+                                metadataService: viewModel.metadataService)
+                        .font(.subheadline)
                 }
-                Spacer()
-                Button {
-                    handleToggleFavorite(assetId: assetId)
-                } label: {
-                    Image(systemName: viewModel.metadataService.isFavorite(assetId: assetId) ? "heart.fill" : "heart")
-                        .font(.title2.weight(.semibold))
-                        .foregroundStyle(.primary)
-                }
-                Button {
-                    handleShare(assetId: assetId)
-                } label: {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.title2.weight(.semibold))
-                        .foregroundStyle(.primary)
-                }
+                Spacer(minLength: 8)
+                metadataActionPill(assetId: assetId)
                 Button {
                     showCredits = true
                 } label: {
-                    Image(systemName: "questionmark.circle")
-                        .font(.title2.weight(.semibold))
-                        .foregroundStyle(.primary)
+                    glassCircleControl {
+                        Image(systemName: "gearshape")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(.primary)
+                    }
                 }
-                .padding(.trailing, 14)
+                .buttonStyle(.plain)
+                .padding(.trailing, 8)
             }
-
-            LocationRow(assetId: assetId,
-                        metadataService: viewModel.metadataService)
+            .padding(.top, 12)
 
             Divider()
                 .opacity(progress)
@@ -382,7 +406,18 @@ struct SwipeDeckView: View {
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
         .frame(height: expandedHeight)
-        .background(.ultraThinMaterial)
+        .background {
+            RoundedRectangle(cornerRadius: 22)
+                .fill(.ultraThinMaterial)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 22)
+                        .fill(Color.white.opacity(0.06))
+                }
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 22)
+                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+        }
         .clipShape(RoundedRectangle(cornerRadius: 22))
         .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: -2)
         .offset(y: yOffset)
@@ -412,6 +447,61 @@ struct SwipeDeckView: View {
                     }
                 }
         )
+    }
+
+    private func metadataActionPill(assetId: String) -> some View {
+        let favoriteActive = viewModel.metadataService.isFavorite(assetId: assetId)
+
+        return HStack(spacing: 4) {
+            metadataActionButton(systemImage: favoriteActive ? "heart.fill" : "heart",
+                                 accent: favoriteActive ? .red : .primary) {
+                handleToggleFavorite(assetId: assetId)
+            }
+
+            Menu {
+                Button {
+                    handleShare(assetId: assetId)
+                } label: {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .tint(.white)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background {
+            Capsule()
+                .fill(.ultraThinMaterial)
+                .overlay {
+                    Capsule()
+                        .fill(Color.white.opacity(0.10))
+                }
+        }
+        .overlay {
+            Capsule()
+                .stroke(Color.white.opacity(0.14), lineWidth: 1)
+        }
+        .shadow(color: Color.black.opacity(0.10), radius: 10, x: 0, y: 4)
+    }
+
+    private func metadataActionButton(
+        systemImage: String,
+        accent: Color = .primary,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(accent)
+                .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.plain)
     }
 
     private func metadataView(assetId: String) -> some View {
@@ -453,29 +543,95 @@ struct SwipeDeckView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 12) {
-            Text("No Photos")
-                .font(.headline)
-            Text("Your library appears empty or no assets are accessible.")
-                .foregroundStyle(.secondary)
+        glassRoundedPanel(cornerRadius: 20, tint: Color.white.opacity(0.05)) {
+            VStack(spacing: 12) {
+                Text("No Photos")
+                    .font(.headline)
+                Text("Your library appears empty or no assets are accessible.")
+                    .foregroundStyle(.secondary)
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity)
         }
         .frame(maxHeight: .infinity)
     }
 
+    private func glassCapsule<Content: View>(
+        paddingH: CGFloat = 14,
+        paddingV: CGFloat = 10,
+        tint: Color = Color.white.opacity(0.08),
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .padding(.horizontal, paddingH)
+            .padding(.vertical, paddingV)
+            .background {
+                Capsule()
+                    .fill(.ultraThinMaterial)
+                    .overlay {
+                        Capsule()
+                            .fill(tint)
+                    }
+            }
+            .overlay {
+                Capsule()
+                    .stroke(Color.white.opacity(0.14), lineWidth: 1)
+            }
+    }
+
+    private func glassCircleControl<Content: View>(
+        size: CGFloat = 42,
+        tint: Color = Color.white.opacity(0.08),
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .frame(width: size, height: size)
+            .background {
+                Circle()
+                    .fill(.ultraThinMaterial)
+                    .overlay {
+                        Circle()
+                            .fill(tint)
+                    }
+            }
+            .overlay {
+                Circle()
+                    .stroke(Color.white.opacity(0.14), lineWidth: 1)
+            }
+    }
+
+    private func glassRoundedPanel<Content: View>(
+        cornerRadius: CGFloat = 16,
+        tint: Color = Color.white.opacity(0.08),
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .background {
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .fill(.ultraThinMaterial)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: cornerRadius)
+                            .fill(tint)
+                    }
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            }
+    }
+
     private func badge(_ text: String, systemImage: String? = nil) -> some View {
-        HStack(spacing: 6) {
-            if let systemImage {
-                Image(systemName: systemImage)
+        glassCapsule(paddingH: 8, paddingV: 4, tint: Color.black.opacity(0.16)) {
+            HStack(spacing: 6) {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.caption.weight(.semibold))
+                }
+                Text(text)
                     .font(.caption.weight(.semibold))
             }
-            Text(text)
-                .font(.caption.weight(.semibold))
+            .foregroundStyle(.white)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(Color.black.opacity(0.6))
-        .foregroundStyle(.white)
-        .clipShape(Capsule())
     }
 
     private func dateString(_ date: Date?) -> String {
@@ -534,52 +690,145 @@ struct SwipeDeckView: View {
     }()
 
     private func cardAreaHeight(availableHeight: CGFloat) -> CGFloat {
-        let reserved = collapsedSheetHeight + 44
+        let reserved = collapsedSheetHeight + 14
         let maxAvailable = max(240, availableHeight - reserved)
-        let target = min(760, availableHeight * 0.8)
+        let target = min(820, availableHeight * 0.86)
         return max(300, min(target, maxAvailable))
     }
 
     private var metadataLabelWidth: CGFloat { 92 }
-    private var collapsedSheetHeight: CGFloat { 78 }
+    private var collapsedSheetHeight: CGFloat { 76 }
 
     private func sheetProgress(availableHeight: CGFloat) -> CGFloat {
         let expandedHeight = min(availableHeight * 0.58, 380)
         let maxLift = max(0, expandedHeight - collapsedSheetHeight)
-        let limitedLift = maxLift * 0.5
+        let limitedLift = maxLift * 0.76
         let currentLift = min(max(sheetLift, 0), limitedLift)
         return limitedLift == 0 ? 0 : currentLift / limitedLift
+    }
+
+
+    private var sheetDismissLayer: some View {
+        Color.clear
+            .contentShape(Rectangle())
+            .allowsHitTesting(true)
+            .gesture(
+                DragGesture(minimumDistance: 12)
+                    .onEnded { value in
+                        let vertical = value.translation.height
+                        let predicted = value.predictedEndTranslation.height
+                        if vertical > 20 || predicted > 50 {
+                            collapseSheet()
+                        }
+                    }
+            )
+            .onTapGesture {
+                collapseSheet()
+            }
+    }
+
+    private var sheetDismissTopOverlay: some View {
+        VStack(spacing: 0) {
+            Color.clear
+                .frame(maxWidth: .infinity)
+                .frame(height: 220)
+                .contentShape(Rectangle())
+                .allowsHitTesting(true)
+                .gesture(
+                    DragGesture(minimumDistance: 12)
+                        .onEnded { value in
+                            let vertical = value.translation.height
+                            let predicted = value.predictedEndTranslation.height
+                            if vertical > 20 || predicted > 50 {
+                                collapseSheet()
+                            }
+                        }
+                )
+                .onTapGesture {
+                    collapseSheet()
+                }
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func collapseSheet() {
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.9)) {
+            sheetLift = 0
+        }
     }
 
     private var counterView: some View {
         let total = viewModel.assetIds.count
         let current = total == 0 ? 0 : min(viewModel.currentIndex + 1, total)
-        return VStack(spacing: 2) {
-            Text(total == 0 ? "—" : "\(formatCount(current)) /")
-            Text(total == 0 ? "—" : formatCount(total))
+        let progressPercent = total == 0 ? 0 : (Double(current) / Double(total) * 100)
+        let progressPercentText = total == 0 ? "—" : String(format: "%.1f%%", progressPercent)
+
+        return Group {
+            if showCounterAsPercent {
+                Text(progressPercentText)
+            } else {
+                VStack(spacing: 2) {
+                    Text(total == 0 ? "—" : "\(formatCount(current)) /")
+                    Text(total == 0 ? "—" : formatCount(total))
+                }
+            }
         }
         .font(.caption.weight(.semibold))
         .foregroundStyle(.secondary)
         .multilineTextAlignment(.center)
         .monospacedDigit()
         .frame(minWidth: 90)
-    }
-
-    private var actionIconRow: some View {
-        HStack {
-            HStack(spacing: 12) {
-                Image(systemName: "trash")
-                Image(systemName: "arrow.left")
-            }
-            Spacer()
-            HStack(spacing: 12) {
-                Image(systemName: "arrow.right")
-                Image(systemName: "checkmark")
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.16)) {
+                showCounterAsPercent.toggle()
             }
         }
-        .font(.title3.weight(.semibold))
-        .foregroundStyle(Color.secondary.opacity(0.7))
+    }
+
+    private func swipeEdgeHints(for width: CGFloat) -> some View {
+        let progress = min(max(abs(width) / 90, 0), 1)
+
+        return ZStack {
+            if width < -6 {
+                edgeBulge(systemImage: "trash.fill",
+                          alignment: .leading,
+                          progress: progress,
+                          tint: Color.red.opacity(0.22))
+            }
+
+            if width > 6 {
+                edgeBulge(systemImage: "checkmark",
+                          alignment: .trailing,
+                          progress: progress,
+                          tint: Color.green.opacity(0.22))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .allowsHitTesting(false)
+        .animation(.easeOut(duration: 0.12), value: width)
+    }
+
+    private func edgeBulge(
+        systemImage: String,
+        alignment: Alignment,
+        progress: CGFloat,
+        tint: Color
+    ) -> some View {
+        let hiddenOffset: CGFloat = alignment == .leading ? -136 : 136
+        let visibleOffset: CGFloat = alignment == .leading ? 22 : -22
+        let xOffset = hiddenOffset + (visibleOffset - hiddenOffset) * progress
+
+        return glassCapsule(paddingH: 28, paddingV: 20, tint: tint) {
+            Image(systemName: systemImage)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(.white)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
+        .offset(x: xOffset)
+        .opacity(progress)
     }
 
     private func metadataMultilineWithCopy(label: String, value: String) -> some View {
@@ -667,19 +916,17 @@ struct SwipeDeckView: View {
                 swipeToast = nil
             }
         } label: {
-            HStack(spacing: 6) {
-                Text(toast.text)
-                    .font(.subheadline.weight(.semibold))
-                Image(systemName: "arrow.uturn.backward")
-                    .font(.caption.weight(.bold))
-                    .padding(.horizontal, 6)
+            glassCapsule(paddingH: 12, paddingV: 8, tint: toast.color.opacity(0.24)) {
+                HStack(spacing: 6) {
+                    Text(toast.text)
+                        .font(.subheadline.weight(.semibold))
+                    Image(systemName: "arrow.uturn.backward")
+                        .font(.caption.weight(.bold))
+                        .padding(.horizontal, 6)
+                }
+                .foregroundStyle(.white)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(toast.color)
-            .foregroundStyle(.white)
-            .clipShape(Capsule())
-            .shadow(color: toast.color.opacity(0.4), radius: 8, x: 0, y: 4)
+            .shadow(color: toast.color.opacity(0.22), radius: 8, x: 0, y: 4)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Undo")
@@ -696,7 +943,7 @@ struct SwipeDeckView: View {
                     .transition(.opacity)
             }
         }
-        .padding(.top, 8)
+        .padding(.bottom, 36)
         .frame(maxWidth: .infinity)
         .animation(.easeInOut(duration: 0.2), value: swipeToast?.id)
         .animation(.easeInOut(duration: 0.2), value: infoToast?.id)
@@ -727,16 +974,14 @@ struct SwipeDeckView: View {
     }
 
     private func infoToastView(_ toast: InfoToast) -> some View {
-        HStack(spacing: 6) {
-            Text(toast.text)
-                .font(.subheadline.weight(.semibold))
+        glassCapsule(paddingH: 12, paddingV: 8, tint: toast.color.opacity(0.24)) {
+            HStack(spacing: 6) {
+                Text(toast.text)
+                    .font(.subheadline.weight(.semibold))
+            }
+            .foregroundStyle(.white)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(toast.color)
-        .foregroundStyle(.white)
-        .clipShape(Capsule())
-        .shadow(color: toast.color.opacity(0.4), radius: 8, x: 0, y: 4)
+        .shadow(color: toast.color.opacity(0.22), radius: 8, x: 0, y: 4)
     }
 
     private func handleCopy(label: String, value: String) {

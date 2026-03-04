@@ -17,9 +17,17 @@ final class SwipeDeckViewModel: ObservableObject {
         let action: SwipeAction
     }
 
+    struct DeletionQueueEntry: Identifiable, Equatable {
+        let assetId: String
+        let addedAt: Date
+
+        var id: String { assetId }
+    }
+
     @Published private(set) var assetIds: [String] = []
     @Published private(set) var monthSections: [MonthSection] = []
     @Published private(set) var deletionSet: Set<String> = []
+    @Published private(set) var deletionQueue: [DeletionQueueEntry] = []
     @Published var currentIndex: Int = 0
     @Published var isLoading: Bool = true
     @Published var errorMessage: String?
@@ -36,7 +44,6 @@ final class SwipeDeckViewModel: ObservableObject {
     let metadataService = MetadataService()
     let gifService = GIFService()
     private let deletionService = DeletionService()
-    private let assetRepository = AssetRepository()
 
     private let prefetchWindow = 20
     private let prefetchSize = CGSize(width: 900, height: 900)
@@ -73,7 +80,8 @@ final class SwipeDeckViewModel: ObservableObject {
         idToIndex = result.2
         undoStack.removeAll()
 
-        deletionSet = loadDeletionSet()
+        deletionQueue = loadDeletionQueueEntries()
+        deletionSet = Set(deletionQueue.map(\.assetId))
         appState = fetchOrCreateAppState()
         resolveCursor()
         prefetch()
@@ -233,23 +241,26 @@ final class SwipeDeckViewModel: ObservableObject {
         persistCursor(assetId: currentAssetId)
     }
 
-    private func loadDeletionSet() -> Set<String> {
+    private func loadDeletionQueueEntries() -> [DeletionQueueEntry] {
         let descriptor = FetchDescriptor<DeletionQueueItem>()
-        let items = (try? modelContext.fetch(descriptor)) ?? []
-        return Set(items.map { $0.assetId })
+        let items = ((try? modelContext.fetch(descriptor)) ?? []).sorted { $0.addedAt < $1.addedAt }
+        return items.map { DeletionQueueEntry(assetId: $0.assetId, addedAt: $0.addedAt) }
     }
 
     private func markDelete(assetId: String) {
         guard !deletionSet.contains(assetId) else { return }
         deletionSet.insert(assetId)
-        let item = DeletionQueueItem(assetId: assetId)
+        let addedAt = Date()
+        let item = DeletionQueueItem(assetId: assetId, addedAt: addedAt)
         modelContext.insert(item)
         try? modelContext.save()
+        deletionQueue.append(DeletionQueueEntry(assetId: assetId, addedAt: addedAt))
     }
 
     private func unmarkDelete(assetId: String) {
         guard deletionSet.contains(assetId) else { return }
         deletionSet.remove(assetId)
+        deletionQueue.removeAll { $0.assetId == assetId }
 
         let descriptor = FetchDescriptor<DeletionQueueItem>(predicate: #Predicate { $0.assetId == assetId })
         if let item = try? modelContext.fetch(descriptor).first {
@@ -265,5 +276,6 @@ final class SwipeDeckViewModel: ObservableObject {
             try? modelContext.save()
         }
         deletionSet.removeAll()
+        deletionQueue.removeAll()
     }
 }

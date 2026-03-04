@@ -1,5 +1,7 @@
 import SwiftUI
 
+private let swipePurgeGitHubURL = URL(string: "https://github.com/1chappie/swipe-purge")!
+
 struct CreditsUsageView: View {
     @ObservedObject var viewModel: SwipeDeckViewModel
     @Environment(\.dismiss) private var dismiss
@@ -7,16 +9,39 @@ struct CreditsUsageView: View {
     var body: some View {
         NavigationView {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    UsageContentView(showTitle: false)
+                VStack(alignment: .leading, spacing: 18) {
+                    headerSection
 
-                    DisclosureGroup {
-                        debugSection
-                    } label: {
-                        Text("Debug")
-                            .font(.title3.weight(.semibold)).foregroundStyle(.white)
+                    settingsCard(minHeight: 56) {
+                        DisclosureGroup {
+                            UsageContentView(showTitle: false, showGitHubLink: false, showHowToTitle: false)
+                                .padding(.top, 8)
+                        } label: {
+                            sectionLabel("How To Use")
+                        }
+                        .tint(.white)
                     }
-                    .font(.subheadline)
+
+                    NavigationLink {
+                        PlaceholderSettingsView(title: "\"Add to Album\" Shortcuts",
+                                                message: "Shortcuts coming soon.")
+                    } label: {
+                        settingsCard(minHeight: 56) {
+                            submenuRow("\"Add to Album\" Shortcuts")
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .tint(.white)
+
+                    settingsCard(minHeight: 56) {
+                        DisclosureGroup {
+                            debugSection
+                                .padding(.top, 8)
+                        } label: {
+                            sectionLabel("Stats and Debug")
+                        }
+                        .tint(.white)
+                    }
                 }
                 .padding(20)
             }
@@ -27,6 +52,32 @@ struct CreditsUsageView: View {
                 }
             }
         }
+    }
+
+    private var headerSection: some View {
+        HStack(spacing: 12) {
+            Text(appVersionText)
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.9))
+
+            Link(destination: swipePurgeGitHubURL) {
+                Text("GitHub")
+                    .underline()
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white)
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var appVersionText: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        if let build, build != version {
+            return "Version \(version) (\(build))"
+        }
+        return "Version \(version)"
     }
 
     private var debugSection: some View {
@@ -67,6 +118,42 @@ struct CreditsUsageView: View {
         return "\(current) / \(total)"
     }
 
+    private func settingsCard<Content: View>(minHeight: CGFloat = 0, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            content()
+                .frame(minHeight: minHeight, alignment: .center)
+        }
+        .padding(16)
+        .background {
+            RoundedRectangle(cornerRadius: 20)
+                .fill(.ultraThinMaterial)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(Color.white.opacity(0.05))
+                }
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        }
+    }
+
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.headline.weight(.semibold))
+            .foregroundStyle(.white)
+    }
+
+    private func submenuRow(_ text: String) -> some View {
+        HStack(spacing: 12) {
+            sectionLabel(text)
+            Spacer(minLength: 12)
+            Image(systemName: "chevron.right")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.8))
+        }
+    }
+
     private func dateString(_ date: Date?) -> String {
         guard let date else { return "N/A" }
         return Self.dateFormatter.string(from: date)
@@ -82,6 +169,14 @@ struct CreditsUsageView: View {
 
 struct UsageContentView: View {
     let showTitle: Bool
+    let showGitHubLink: Bool
+    let showHowToTitle: Bool
+
+    init(showTitle: Bool, showGitHubLink: Bool = true, showHowToTitle: Bool = true) {
+        self.showTitle = showTitle
+        self.showGitHubLink = showGitHubLink
+        self.showHowToTitle = showHowToTitle
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -90,11 +185,19 @@ struct UsageContentView: View {
                     .font(.largeTitle.weight(.bold))
             }
 
-            Text("Link to GitHub")
-                .foregroundStyle(.blue)
+            if showGitHubLink {
+                Link(destination: swipePurgeGitHubURL) {
+                    Text("GitHub")
+                        .underline()
+                        .foregroundStyle(.white)
+                }
+                .buttonStyle(.plain)
+            }
 
-            Text("How to Use")
-                .font(.title3.weight(.semibold))
+            if showHowToTitle {
+                Text("How to Use")
+                    .font(.title3.weight(.semibold))
+            }
 
             VStack(alignment: .leading, spacing: 6) {
                 usageRow(icon: "arrow.left", icon2: "trash", text: "Swipe left to mark a photo for deletion.")
@@ -121,6 +224,23 @@ struct UsageContentView: View {
             }
             Text(text)
         }
+    }
+}
+
+private struct PlaceholderSettingsView: View {
+    let title: String
+    let message: String
+
+    var body: some View {
+        ScrollView {
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+        }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

@@ -18,6 +18,8 @@ struct RootView: View {
                     .environmentObject(auth)
             }
         }
+        .preferredColorScheme(.dark)
+        .dynamicTypeSize(.medium)
         .onAppear { auth.refresh() }
     }
 }

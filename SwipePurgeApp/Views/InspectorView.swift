@@ -33,18 +33,8 @@ struct InspectorView: View {
 
             contentView
         }
-        .overlay(alignment: .topLeading) {
-            Button {
-                dismissView()
-            } label: {
-                Image(systemName: "xmark")
-                    .foregroundStyle(.white)
-                    .padding(12)
-                    .background(Color.black.opacity(0.6))
-                    .clipShape(Circle())
-            }
-            .padding(.top, 56)
-            .padding(.leading, 16)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            closeHint
         }
         .offset(y: dragOffset)
         .gesture(
@@ -72,6 +62,25 @@ struct InspectorView: View {
         .task {
             await loadAsset()
         }
+    }
+
+    private var closeHint: some View {
+        VStack(spacing: 6) {
+            Text("Swipe down to close")
+                .font(.caption.weight(.semibold))
+            Image(systemName: "chevron.down")
+                .font(.caption.weight(.bold))
+        }
+        .foregroundStyle(.white.opacity(0.82))
+        .frame(maxWidth: .infinity)
+        .padding(.top, 10)
+        .padding(.bottom, 16)
+        .background(
+            LinearGradient(colors: [Color.clear, Color.black.opacity(0.24)],
+                           startPoint: .top,
+                           endPoint: .bottom)
+        )
+        .allowsHitTesting(false)
     }
 
     @ViewBuilder
