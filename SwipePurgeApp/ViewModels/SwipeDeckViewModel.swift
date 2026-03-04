@@ -47,6 +47,7 @@ final class SwipeDeckViewModel: ObservableObject {
 
     private let prefetchWindow = 20
     private let prefetchSize = CGSize(width: 900, height: 900)
+    private var includeHiddenAssets = false
 
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
@@ -61,12 +62,18 @@ final class SwipeDeckViewModel: ObservableObject {
     var savedCursorCreationDate: Date? { appState?.cursorCreationDate }
     var totalDeletedCount: Int { appState?.totalDeletedCount ?? 0 }
 
-    func load() async {
-        isLoading = true
+    func load(includeHidden: Bool? = nil, silently: Bool = false) async {
+        if let includeHidden {
+            includeHiddenAssets = includeHidden
+        }
+        let includeHiddenAssets = self.includeHiddenAssets
+        if !silently {
+            isLoading = true
+        }
         errorMessage = nil
         let result = await Task.detached(priority: .userInitiated) { () async -> ([String], [MonthSection], [String: Int]) in
             let ids = await MainActor.run {
-                AssetRepository().fetchAllAssetIdsChronological()
+                AssetRepository().fetchAllAssetIdsChronological(includeHidden: includeHiddenAssets)
             }
             let sections = await MainActor.run {
                 AssetRepository().buildMonthSections(assetIds: ids)
@@ -86,11 +93,13 @@ final class SwipeDeckViewModel: ObservableObject {
         resolveCursor()
         prefetch()
 
-        isLoading = false
+        if !silently {
+            isLoading = false
+        }
     }
 
-    func refreshLibrary() async {
-        await load()
+    func refreshLibrary(includeHidden: Bool? = nil, silently: Bool = false) async {
+        await load(includeHidden: includeHidden, silently: silently)
     }
 
     func swipeLeft() {

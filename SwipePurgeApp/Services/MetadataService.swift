@@ -10,6 +10,7 @@ struct AssetMetadata {
     let mediaSubtypes: PHAssetMediaSubtype
     let duration: TimeInterval
     let isFavorite: Bool
+    let isHidden: Bool
     let location: CLLocation?
     let pixelWidth: Int
     let pixelHeight: Int
@@ -41,6 +42,7 @@ final class MetadataService: ObservableObject {
             mediaSubtypes: asset.mediaSubtypes,
             duration: asset.duration,
             isFavorite: asset.isFavorite,
+            isHidden: asset.isHidden,
             location: asset.location,
             pixelWidth: asset.pixelWidth,
             pixelHeight: asset.pixelHeight,
@@ -58,6 +60,10 @@ final class MetadataService: ObservableObject {
 
     func isFavorite(assetId: String) -> Bool {
         metadata(assetId: assetId)?.isFavorite ?? false
+    }
+
+    func isHidden(assetId: String) -> Bool {
+        metadata(assetId: assetId)?.isHidden ?? false
     }
 
     func mediaType(assetId: String) -> PHAssetMediaType? {
@@ -135,5 +141,30 @@ final class MetadataService: ObservableObject {
             }
 
             refresh(assetId: assetId)
+        }
+
+    func toggleHidden(assetId: String) async throws -> Bool {
+            let fetch = PHAsset.fetchAssets(withLocalIdentifiers: [assetId], options: nil)
+            guard let asset = fetch.firstObject else {
+                throw NSError(domain: "SwipePurge", code: 5, userInfo: [NSLocalizedDescriptionKey: "Item not available"])
+            }
+
+            let newValue = !asset.isHidden
+
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+                PHPhotoLibrary.shared().performChanges({
+                    let request = PHAssetChangeRequest(for: asset)
+                    request.isHidden = newValue
+                }, completionHandler: { success, error in
+                    if let error { cont.resume(throwing: error); return }
+                    if success { cont.resume(returning: ()) }
+                    else {
+                        cont.resume(throwing: NSError(domain: "SwipePurge", code: 6, userInfo: [NSLocalizedDescriptionKey: "Failed to update hidden state"]))
+                    }
+                })
+            }
+
+            refresh(assetId: assetId)
+            return newValue
         }
 }

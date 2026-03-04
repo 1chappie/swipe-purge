@@ -22,8 +22,11 @@ struct SwipeDeckView: View {
     @State private var infoToastTask: Task<Void, Never>?
     @State private var copyPulseLabel: String?
     @State private var showCounterAsPercent = false
+    @StateObject private var albumShortcutStore = AlbumShortcutStore()
+    @State private var shortcutMembership: [String: Bool] = [:]
     @State private var sharePayload: SharePayload?
     @State private var showCredits = false
+    @State private var isUpdatingHiddenState = false
     @State private var sheetLift: CGFloat = 0
     @State private var sheetDragStart: CGFloat = 0
     @State private var isDraggingSheet = false
@@ -94,6 +97,34 @@ struct SwipeDeckView: View {
                     .transition(.opacity)
                     .zIndex(10)
             }
+
+
+            if isUpdatingHiddenState {
+                ZStack {
+                    Color.clear
+                        .background(.ultraThinMaterial)
+                        .ignoresSafeArea()
+
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .controlSize(.large)
+                        .padding(24)
+                        .background {
+                            RoundedRectangle(cornerRadius: 18)
+                                .fill(.ultraThinMaterial)
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 18)
+                                        .fill(Color.white.opacity(0.06))
+                                }
+                        }
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 18)
+                                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                        }
+                }
+                .transition(.opacity)
+                .zIndex(20)
+            }
         }
         .sheet(isPresented: $showAllPhotos) {
             AllPhotosGridView(viewModel: viewModel)
@@ -102,7 +133,7 @@ struct SwipeDeckView: View {
             ToDeleteView(viewModel: viewModel)
         }
         .sheet(isPresented: $showCredits) {
-            CreditsUsageView(viewModel: viewModel)
+            CreditsUsageView(viewModel: viewModel, albumShortcutStore: albumShortcutStore)
         }
         .sheet(item: $sharePayload) { payload in
             ShareSheet(items: payload.items)
@@ -115,16 +146,27 @@ struct SwipeDeckView: View {
             if !newValue { auth.refresh() }
         }
         .task {
-            await viewModel.load()
+            await viewModel.load(includeHidden: albumShortcutStore.includeHidden)
+            refreshShortcutMembership(for: viewModel.currentAssetId)
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
-                Task { await viewModel.refreshLibrary() }
+                Task { await viewModel.refreshLibrary(includeHidden: albumShortcutStore.includeHidden) }
             }
         }
-        .onChange(of: viewModel.currentAssetId) { _, _ in
+        .onChange(of: viewModel.currentAssetId) { _, newAssetId in
             withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) {
                 sheetLift = 0
+            }
+            refreshShortcutMembership(for: newAssetId)
+        }
+        .onChange(of: albumShortcutSignature) { _, _ in
+            refreshShortcutMembership(for: viewModel.currentAssetId)
+        }
+        .onChange(of: albumShortcutStore.includeHidden) { _, newValue in
+            Task {
+                await viewModel.refreshLibrary(includeHidden: newValue, silently: true)
+                refreshShortcutMembership(for: viewModel.currentAssetId)
             }
         }
         .onChange(of: viewModel.commitToastMessage) { _, message in
@@ -214,6 +256,8 @@ struct SwipeDeckView: View {
         let isGif = viewModel.gifService.isGIF(assetId: assetId)
         let metadata = viewModel.metadataService.metadata(assetId: assetId)
         let isVideo = metadata?.mediaType == .video
+        let isHidden = metadata?.isHidden == true
+        let albums = viewModel.albumTagService.albumTags(assetId: assetId)
 
         return ZStack(alignment: .topLeading) {
             AssetThumbnailView(assetId: assetId,
@@ -254,6 +298,12 @@ struct SwipeDeckView: View {
             VStack(alignment: .leading, spacing: 6) {
                 if viewModel.metadataService.isFavorite(assetId: assetId) {
                     badge("Favorite", systemImage: "heart.fill")
+                }
+                if isHidden {
+                    badge("Hidden")
+                }
+                ForEach(albums, id: \.self) { album in
+                    badge(album)
                 }
                 if metadata?.mediaSubtypes.contains(.photoScreenshot) == true {
                     badge("Screenshot")
@@ -463,6 +513,30 @@ struct SwipeDeckView: View {
                     handleShare(assetId: assetId)
                 } label: {
                     Label("Share", systemImage: "square.and.arrow.up")
+                }
+
+                if albumShortcutStore.includeHidden {
+                    let isHidden = viewModel.metadataService.isHidden(assetId: assetId)
+                    Button {
+                        handleToggleHidden(assetId: assetId, isCurrentlyHidden: isHidden)
+                    } label: {
+                        Label(isHidden ? "Unhide" : "Hide",
+                              systemImage: isHidden ? "eye" : "eye.slash")
+                    }
+                }
+
+                if !albumShortcutStore.shortcuts.isEmpty {
+                    Divider()
+                }
+
+                ForEach(Array(albumShortcutStore.shortcuts.reversed())) { shortcut in
+                    let isInAlbum = shortcutMembership[shortcut.albumId] ?? false
+                    Button {
+                        handleAlbumShortcutToggle(assetId: assetId, shortcut: shortcut, isInAlbum: isInAlbum)
+                    } label: {
+                        Label("\(isInAlbum ? "Remove from" : "Add to") \(shortcut.title)",
+                              systemImage: isInAlbum ? "minus.circle" : "plus.circle")
+                    }
                 }
             } label: {
                 Image(systemName: "ellipsis")
@@ -1003,6 +1077,76 @@ struct SwipeDeckView: View {
             let message = wasFavorite ? "Removed from Favorites" : "Added to Favorites"
             let color: Color = wasFavorite ? .gray : .red
             showInfoToast(text: message, color: color)
+        }
+    }
+
+    private func handleToggleHidden(assetId: String, isCurrentlyHidden: Bool) {
+        withAnimation(.easeInOut(duration: 0.16)) {
+            isUpdatingHiddenState = true
+        }
+
+        Task { @MainActor in
+            defer {
+                withAnimation(.easeInOut(duration: 0.16)) {
+                    isUpdatingHiddenState = false
+                }
+            }
+
+            do {
+                let newHiddenState = try await viewModel.metadataService.toggleHidden(assetId: assetId)
+                await viewModel.refreshLibrary(includeHidden: albumShortcutStore.includeHidden, silently: true)
+                let message = newHiddenState ? "Hidden" : "Unhidden"
+                let color: Color = newHiddenState ? .gray : .green
+                showInfoToast(text: message, color: color)
+            } catch {
+                viewModel.errorMessage = hiddenActionErrorMessage(isHiding: !isCurrentlyHidden, error: error)
+            }
+        }
+    }
+
+    private func hiddenActionErrorMessage(isHiding: Bool, error: Error) -> String {
+        let verb = isHiding ? "hide this item" : "unhide this item"
+        let description = (error as NSError).localizedDescription
+        let base = "Unable to \(verb). Hidden items may be unavailable due to Photos privacy settings."
+        if description.isEmpty || description == "The operation couldn’t be completed." {
+            return base
+        }
+        return "\(base) \(description)"
+    }
+
+    private var albumShortcutSignature: String {
+        albumShortcutStore.shortcuts.map(\.albumId).joined(separator: "|")
+    }
+
+    private func refreshShortcutMembership(for assetId: String?) {
+        guard let assetId else {
+            shortcutMembership = [:]
+            return
+        }
+
+        var membership: [String: Bool] = [:]
+        for shortcut in albumShortcutStore.shortcuts {
+            membership[shortcut.albumId] = albumShortcutStore.containsAsset(assetId, in: shortcut.albumId)
+        }
+        shortcutMembership = membership
+    }
+
+    private func handleAlbumShortcutToggle(assetId: String, shortcut: AlbumShortcut, isInAlbum: Bool) {
+        Task {
+            do {
+                try await albumShortcutStore.setAsset(assetId, in: shortcut.albumId, shouldContain: !isInAlbum)
+                await MainActor.run {
+                    shortcutMembership[shortcut.albumId] = !isInAlbum
+                    viewModel.albumTagService.invalidate(assetId: assetId)
+                    let verb = isInAlbum ? "Removed from" : "Added to"
+                    let color: Color = isInAlbum ? .gray : .green
+                    showInfoToast(text: "\(verb) \(shortcut.title)", color: color)
+                }
+            } catch {
+                await MainActor.run {
+                    viewModel.errorMessage = error.localizedDescription
+                }
+            }
         }
     }
 

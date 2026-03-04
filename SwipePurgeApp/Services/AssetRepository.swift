@@ -9,9 +9,9 @@ struct MonthSection: Identifiable {
 }
 
 final class AssetRepository {
-    func fetchAllAssetIdsChronological() -> [String] {
+    func fetchAllAssetIdsChronological(includeHidden: Bool = false) -> [String] {
         let opts = PHFetchOptions()
-        opts.predicate = NSPredicate(format: "isHidden == NO")
+        opts.includeHiddenAssets = includeHidden
         opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
 
         let result = PHAsset.fetchAssets(with: opts)
